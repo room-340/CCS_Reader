@@ -20,7 +20,8 @@ namespace CCS_Reader
 
         string[] selected_com = new string[ports_total];
         SerialPort[] active_com = new SerialPort[ports_total];
-        Queue[] read_queue = new Queue[ports_total + 1];
+        Queue[] read_queue = new Queue[5]; // five sensors (so far)
+        Queue GPS_queue = new Queue(); // five sensors (so far)
         Queue[] byte2read = new Queue[ports_total];
         bool all_connected = false;
         volatile int thread_counter = 0;
@@ -38,7 +39,7 @@ namespace CCS_Reader
 
             for (int i = 0; i < ports_total; i++)
             {
-                active_com[i] = new SerialPort(selected_com[i], 230400, 0, 8, StopBits.One);
+                active_com[i] = new SerialPort(selected_com[i], 400000, 0, 8, StopBits.One);
                 active_com[i].WriteBufferSize = 512;
                 active_com[i].ReadBufferSize = 8192;
                 active_com[i].Open();
@@ -64,9 +65,9 @@ namespace CCS_Reader
                 comBox3.Items.Add(port);
                 comBox4.Items.Add(port);
             }
-            if (ports.Length < 4)
+            if (ports.Length <4)
             {
-                //MessageBox.Show("Найдено меньше 4 портов.");
+                MessageBox.Show("Найдено меньше 4 портов.\nПроверьте подключение или переустановите драйвера.");
                 return;
             }
             if (ports.Length != 0)
@@ -84,7 +85,7 @@ namespace CCS_Reader
 
         private void check_read_available()
         {
-            if ((comBox1.Items.Count < 4)||(saveFileDialog.FileName == ""))
+            if ((comBox1.Items.Count < 2)||(saveFileDialog.FileName == ""))
                 readButton.Enabled = false;
             else
                 readButton.Enabled = true;
@@ -130,9 +131,15 @@ namespace CCS_Reader
                     source.Text = "Остановить чтение";
                     stop_reading = false;
                     Thread[] reading = new Thread[ports_total];
-                    for (int i = 0; i < ports_total; i++)
+                    for (int i = 0; i < 5; i++)
                     {
                         read_queue[i] = new Queue();
+                    }
+                       
+                    for (int i = 0; i < ports_total; i++)
+                    {
+                        //read_queue[i] = new Queue();
+                        
                         //reading[i] = new Thread(thread_read_flexible);
                         reading[i] = new Thread(thread_read_raw);
                         reading[i].Start();
@@ -142,8 +149,10 @@ namespace CCS_Reader
                 case "Остановить чтение":
                     stop_reading = true;
                     control.Stop();
-                    read_queue[4] = new Queue();
+                    //read_queue[4] = new Queue();
                     //MessageBox.Show("Чтение завершено.");
+                    MessageBox.Show("Количество байт принятых с СОМ портов:\n" + byte2read[0].Count + " " + byte2read[1].Count + " " + byte2read[2].Count +
+                        " " + byte2read[3].Count);
                     for (int i = 0; i < ports_total; i++)
                         write_data_raw(i);
                     source.Text = "Начать считывание";
@@ -185,6 +194,8 @@ namespace CCS_Reader
                         if (finished[0] && finished[1] && finished[2] && finished[3] && finished[4])
                             break;
                     }
+                    MessageBox.Show("Количество пакетов принятых с датчиков:\n" + sensor_1.Length + " " + sensor_2.Length + " " + sensor_3.Length
+                         + " " + sensor_4.Length + " " + sensor_5.Length);
                     if (sensor_1.Length != 0)
                         write_data(sensor_1, 1);
                     if (sensor_2.Length != 0)
@@ -195,147 +206,100 @@ namespace CCS_Reader
                         write_data(sensor_4, 4);
                     if (sensor_5.Length != 0)
                         write_data(sensor_5, 5);
-                    //MessageBox.Show("Сохранение завершено.");
-                    saveBox.Text = "Сохранение завершено";
+
+                    int glen = GPS_queue.Count;
+                    GPS_packet[] pack1 = new GPS_packet[glen];
+                    for (int i = 0; i < glen; i++)
+                        pack1[i] = (GPS_packet)GPS_queue.Dequeue();
+                    if (pack1.Length != 0)
+                        write_gps(pack1, 1);
+                    
+                        //MessageBox.Show("Сохранение завершено.");
+                        saveBox.Text = "Сохранение завершено";
                     break;
             }
             
 
             
-            
-            
-            
                     
         }
 
-        //private void thread_read(object source)
-        //{
+        private void write_gps(GPS_packet[] source, int index)
+        {
+            int length = source.Length;
+            saveBox.Text = "Сохранение файла " + index;
+            saveBox.Update();
+            progressBar.Value = 0;
+            progressBar.Maximum = length;
+            string additional = "";
+            switch (index)
+            {
+                case 1:
+                    additional = "left_oar";
+                    break;
+                case 2:
+                    additional = "right_oar";
+                    break;
+                case 3:
+                    additional = "first_hand";
+                    break;
+                case 4:
+                    additional = "second_hand";
+                    break;
+                case 5:
+                    additional = "seat";
+                    break;
+            }
+            FileStream fs_gps = File.Create(saveFileDialog.FileName + "_" + additional + ".gps", 2048, FileOptions.None);
+            BinaryWriter str_gps = new BinaryWriter(fs_gps);
+            Int16 buf16; Byte buf8; Int32 buf32;
+            Double bufD; Single bufS; UInt32 bufU32;
 
-        //    int index = thread_counter++;
-        //    thread_running[index] = true;
-        //    byte[] buffer = new byte[64];
-        //    int counter = 0;
-        //    int bytes_read = 0;
-        //    packet pack;
-        //    System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
             
-        //    timer.Start();
-        //    while (true)
-        //    {
-        //        if (active_com[index].BytesToRead >= 40)
-        //        {
-        //            bytes_read = active_com[index].Read(buffer, 0, 40);
-        //            if (bytes_read == 40)
-        //            {
-        //                pack = new packet();
-        //                pack.frame1 = buffer[0];
-        //                pack.type = buffer[1];
-        //                pack.ticks = BitConverter.ToUInt32(buffer, 2);
-        //                pack.a = new short[3];
-        //                pack.a[0] = BitConverter.ToInt16(buffer, 6);
-        //                pack.a[1] = BitConverter.ToInt16(buffer, 8);
-        //                pack.a[2] = BitConverter.ToInt16(buffer, 10);
-        //                pack.w = new short[3];
-        //                pack.w[0] = BitConverter.ToInt16(buffer, 12);
-        //                pack.w[1] = BitConverter.ToInt16(buffer, 14);
-        //                pack.w[2] = BitConverter.ToInt16(buffer, 16);
-        //                pack.m = new short[3];
-        //                pack.m[0] = BitConverter.ToInt16(buffer, 18);
-        //                pack.m[1] = BitConverter.ToInt16(buffer, 20);
-        //                pack.m[2] = BitConverter.ToInt16(buffer, 22);
-        //                pack.quat = new short[4];
-        //                pack.quat[0] = BitConverter.ToInt16(buffer, 24);
-        //                pack.quat[1] = BitConverter.ToInt16(buffer, 26);
-        //                pack.quat[2] = BitConverter.ToInt16(buffer, 28);
-        //                pack.quat[3] = BitConverter.ToInt16(buffer, 30);
-        //                pack.bar = BitConverter.ToInt16(buffer, 32);
-        //                pack.temper = BitConverter.ToInt16(buffer, 34);
-        //                pack.snum = buffer[36];
-        //                pack.crc = buffer[37];
-        //                pack.frame2 = buffer[38];
-        //                pack.frame3 = buffer[39];
-        //                read_queue[index].Enqueue(pack);
-        //                counter++;
-        //                timer.Restart();
-        //                if (stop_reading)
-        //                    break;
-        //            }
-        //        }
-        //        if (timer.ElapsedMilliseconds >= 1000)
-        //            break;
-                
-        //    }
-        //    timer.Stop();
-        //    active_com[index].Close();
-        //    thread_running[index] = false;
-        //}
+            double[] read_coefs = new double[0];
+            double additional_mult = 1;
+            for (int i = 0; i < length; i++)
+            {
+                progressBar.Invoke(new Action(() => progressBar.Value++));
+                // GPS
+                bufD = (Double)(source[i].lat) / ((180 / Math.PI) * 16.66);
+                str_gps.Write(bufD);
+                bufD = (Double)(source[i].lon) / ((180 / Math.PI) * 16.66);
+                str_gps.Write(bufD);
+                bufD = (Double)(0);
+                str_gps.Write(bufD);
 
-        //private void thread_read_flexible(object source)
-        //{
-        //    int index = thread_counter++;
-        //    thread_running[index] = true;
-        //    byte[] buffer = new byte[64];
-        //    byte[] finder = new byte[2];
-        //    int counter = 0;
-        //    int bytes_read = 0;
-        //    packet pack;
-        //    System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
+                bufS = (Single)(source[i].time);
+                str_gps.Write(bufS);
+                bufS = (Single)(source[i].speed);
+                str_gps.Write(bufS);
+                bufS = (Single)(0);
+                str_gps.Write(bufS);
+                str_gps.Write(bufS);
 
-        //    timer.Start();
-        //    while (true)
-        //    {
-        //        if (active_com[index].BytesToRead >= 40)
-        //        {
-        //            bytes_read = active_com[index].Read(buffer, 0, 1);
-        //            finder[1] = buffer[0];
-        //            if ((finder[0] == 0x10) && ((finder[1] == 0x41) || (finder[1] == 0x51)))
-        //            {
-        //                bytes_read = active_com[index].Read(buffer, 2, 38);
-        //                pack = new packet();
-        //                pack.frame1 = finder[0];
-        //                pack.type = finder[1];
-        //                pack.ticks = BitConverter.ToUInt32(buffer, 2);
-        //                pack.a = new short[3];
-        //                pack.a[0] = BitConverter.ToInt16(buffer, 6);
-        //                pack.a[1] = BitConverter.ToInt16(buffer, 8);
-        //                pack.a[2] = BitConverter.ToInt16(buffer, 10);
-        //                pack.w = new short[3];
-        //                pack.w[0] = BitConverter.ToInt16(buffer, 12);
-        //                pack.w[1] = BitConverter.ToInt16(buffer, 14);
-        //                pack.w[2] = BitConverter.ToInt16(buffer, 16);
-        //                pack.m = new short[3];
-        //                pack.m[0] = BitConverter.ToInt16(buffer, 18);
-        //                pack.m[1] = BitConverter.ToInt16(buffer, 20);
-        //                pack.m[2] = BitConverter.ToInt16(buffer, 22);
-        //                pack.quat = new short[4];
-        //                pack.quat[0] = BitConverter.ToInt16(buffer, 24);
-        //                pack.quat[1] = BitConverter.ToInt16(buffer, 26);
-        //                pack.quat[2] = BitConverter.ToInt16(buffer, 28);
-        //                pack.quat[3] = BitConverter.ToInt16(buffer, 30);
-        //                pack.bar = BitConverter.ToInt16(buffer, 32);
-        //                pack.temper = BitConverter.ToInt16(buffer, 34);
-        //                pack.snum = buffer[36];
-        //                pack.crc = buffer[37];
-        //                pack.frame2 = buffer[38];
-        //                pack.frame3 = buffer[39];
-        //                if (pack.snum == 0xF1)
-        //                    read_queue[index].Enqueue(pack);
-        //                counter++;
-        //                timer.Restart();
-        //                if (stop_reading)
-        //                    break;
-        //            }
-        //            finder[0] = finder[1];
-        //        }                    
-        //        if (timer.ElapsedMilliseconds >= 1000)
-        //            break;
-                
-        //    }
-        //    timer.Stop();
-        //    active_com[index].Close();
-        //    thread_running[index] = false;
-        //}
+                //bufU32 = (UInt32)(i);
+                bufU32 = (UInt32)(source[i].ticks_gps);
+                str_gps.Write(bufU32);
+                buf8 = (Byte)(0);
+                str_gps.Write(buf8);
+                str_gps.Write(buf8);
+                str_gps.Write(buf8);
+            }
+            // Запись даты в конец gps файла
+            int day = (int)source[length - 1].date / 10000;
+            int month = (int)(source[length - 1].date - day * 10000) / 100;
+            int year = (int)(2000 + source[length - 1].date - day * 10000 - month * 100);
+            string datarec = String.Format("{0:d2}.{1:d2}.{2:d4}", day, month, year);
+            str_gps.Write(datarec);
+      
 
+
+            str_gps.Flush();
+            str_gps.Close();
+
+        }
+
+ 
         private void thread_read_raw(object source)
         {
             int index = thread_counter++;
@@ -360,7 +324,9 @@ namespace CCS_Reader
                     if (stop_reading)
                         break;
                 }
-                if (timer.ElapsedMilliseconds >= 1000)
+                //if (timer.ElapsedMilliseconds >= 1000)
+                //    break;
+                if (stop_reading)
                     break;
             }
             timer.Stop();
@@ -375,7 +341,84 @@ namespace CCS_Reader
             saveBox.Update();
             progressBar.Value = 0;
             progressBar.Maximum = length;
-            FileStream fs_imu = File.Create(saveFileDialog.FileName + "_" + index + ".imu", 2048, FileOptions.None);
+            string additional = "";
+            double[] magn_c = new double[12];
+            double[] accl_c = new double[12];
+            double[] gyro_c = new double[12];
+            double Mk = 1;
+            double Wk = 1;
+            double Ak = 1;
+            switch (index)
+            {
+                case 1:
+                    additional = "left_oar";
+                    double[] temp1 = { 0.021012275928952,   0.067860169975568,   0.000127689343889,   0.045296151352541,
+                                      -0.009324017077391,   0.026722923577867,   0.008307857594568,   0.005284287915262,
+                                      -0.035947192687517,  -0.012542925115207,   0.061512131892943,   0.004409782721854 };
+
+                    accl_c = temp1;
+                    Ak = 0.996259867299029;
+                    double[] temp11 = { 0.002873025761360,  -0.000277783847693,  -0.008949237789463,   0.024839518300883,
+                                        0.018134114269133,   0.004957678597933,   0.059903966032509,  -0.020001702990621,
+                                       -0.048455202844697,   0.040007724599001,  -0.002723436449578,   0.028657182612509 };
+                    magn_c = temp11;
+                    Mk = 1.989928230657113;
+                    Wk = 1.024951581925949;
+                    break;
+                case 2:
+                    additional = "right_oar";
+                    double[] temp2 = { 0.006489103530672,   0.007711972047671,   0.008910927008256,   0.004526628966860,
+                                      -0.030613701020120,   0.009733926042102,   0.000520434141698,  -0.020438431372878,
+                                      -0.000690207812167,   0.003527827615877,   0.003268096379523,  -0.009084146831565 };
+
+                    accl_c = temp2;
+                    Ak = 0.993917643789002;
+                    double[] temp22 = {-0.004338472524034,  -0.007279143920897,  -0.016596561254121,  -0.040100105586272,
+                                        0.026447190185438,   0.062723828297715,   0.014235202706375,  -0.032778454891706,
+                                       -0.016686216543873,   0.049183804843751,  -0.170661765769371,   0.174784618340082 };
+                    magn_c = temp22;
+                    Mk = 1.981050375613622;
+                    Wk = 0.999473669119779;
+                    break;
+                case 3:
+                    additional = "first_hand";
+                    double[] temp3 = { 0.012248789806271,   0.010963952889031,   0.010082940049261,   0.017732310046796,
+                                      -0.010807018986018,  -0.017866987099261,  -0.038976713533177,   0.011937965171044,
+                                       0.017418474194167,   0.010157002539499,   0.006639710879831,  -0.008997250633174 };
+
+                    accl_c = temp3;
+                    Ak = 0.995116429313122;
+                    double[] temp33 = {-0.024902579646778,  -0.020478721707093,  -0.026353375666180,  -0.001744353714878,
+                                        0.001038721251414,  -0.008552827405651,   0.000013148017514,   0.005334631470956,
+                                       -0.004628038571913,  -0.041660570389140,   0.203013174006507,   0.110944181992475 };
+                    magn_c = temp33;
+                    Mk = 2.000804739331122;
+                    Wk = 1.005957834380545;
+                    break;
+                case 4:
+                    additional = "second_hand";
+                    double[] temp4 = { 0.009773445955991,   0.010515969102165,   0.046332523300049,  -0.009734857220358,
+                                       0.088901575635824,   0.011068909952491,  -0.012572850762404,   0.170713670954205,
+                                      -0.008974449587517,   0.001063872406408,  -0.005104328004269,  -0.003338723771119 };
+                    accl_c = temp4;
+                    Ak = 0.995096553223738;
+                    double[] temp44 = { 0.014780841871083,   0.018746310904878,   0.009620181136691,  -0.006116082059700,
+                                       -0.000324924134046,  -0.004326570176434,  -0.007611544691470,   0.009652319917883,
+                                        0.002813293660957,   0.093081170636918,   0.035125384985654,  -0.014316950547061 };
+                    magn_c = temp44;
+                    Mk = 2.063752665877927;
+                    Wk = 1.013532577606638;
+                    break;
+                case 5:
+                    additional = "seat";
+                    double[] temp5 = { 0.018860976044349,   0.012994456079329,  -0.017726498806178,   0.014155888603851,
+                                       0.135660705289298,  -0.005517590513633,  -0.006515740524433,   0.089222505526992,
+                                       0.007556195473340,  -0.034224056011697,  -0.032625814493799,  -0.091725250270515 };
+                    accl_c = temp5;
+                    Ak = 0.990392687940513;
+                    break;     
+            }
+            FileStream fs_imu = File.Create(saveFileDialog.FileName + "_" + additional + ".imu", 2048, FileOptions.None);
             BinaryWriter str_imu = new BinaryWriter(fs_imu);
             Int16 buf16; Byte buf8; Int32 buf32;
             Double bufD; Single bufS; UInt32 bufU32;
@@ -387,8 +430,9 @@ namespace CCS_Reader
             Kalman_class.Sensors Sensors = new Kalman_class.Sensors(new DenseMatrix(1, 3, 0), new DenseMatrix(1, 3, 0), new DenseMatrix(1, 3, 0));
             Matrix Initia_quat = new DenseMatrix(1, 4, 0);
             Initia_quat.At(0, 0, 1);
-            Kalman_class.State State = new Kalman_class.State(Math.Pow(10, 2), Math.Pow(10, 2), Math.Pow(10, -3),
+            Kalman_class.State State = new Kalman_class.State(Kalman_class.ACCLERATION_NOISE, Kalman_class.MAGNETIC_FIELD_NOISE, Kalman_class.ANGULAR_VELOCITY_NOISE,
                 Math.Pow(10, -6), Math.Pow(10, -15), Math.Pow(10, -15), Initia_quat);
+
             double[] angles = new double[3];
             double[] mw, ma, mm;
             ma = new double[3];
@@ -396,67 +440,149 @@ namespace CCS_Reader
             mm = new double[3];
             Tuple<Vector, Kalman_class.Sensors, Kalman_class.State> AHRS_result;
 
-            double[] magn_c = new double[12];
-            double[] accl_c = new double[12];
-            double[] gyro_c = new double[12];
 
-            double[] read_coefs = { 0.833F/1000, 0.04, 142.9F };
-            //read_coefs[1] *= (Math.PI / 180);
-            //double[] read_coefs = { 1,1,1 };
-            if (index == 3)
-            {
-                read_coefs[0] = 3.9F/1000;
-                read_coefs[1] = 1;
-                read_coefs[2] = 1;
-                //length *= 2;
-            }
+
+            double[] w_helper = new double[source.Length];
+            double[] anglex = new double[source.Length];
+            double[] angley = new double[source.Length];
+            double[] anglez = new double[source.Length];
+
+            //for (int i = 0; i < w_helper.Length; i++) w_helper[i] = source[i].w[0];
+            //anglex = Signal_processing.Zero_average_corr(w_helper, w_helper.Length);
+            //for (int i = 0; i < w_helper.Length; i++) w_helper[i] = source[i].w[1];
+            //angley = Signal_processing.Zero_average_corr(w_helper, w_helper.Length);
+            //for (int i = 0; i < w_helper.Length; i++) w_helper[i] = source[i].w[2];
+            //anglez = Signal_processing.Zero_average_corr(w_helper, w_helper.Length);
+
+            double[] read_coefs = new double[0];
+            double additional_mult = 1;
+            switch (source[0].type)
+                {
+                    case 0x41:
+                        double[] tempc1 = { 0.000833, 0.04 * Math.PI / 180F, 0.00014286, 0.00002, 31, 0.07386, 0, 0 };
+                        read_coefs = tempc1;
+                        break;
+                    case 0x51:
+                        double[] tempc2 = { 0.0039, 0, 0, 0, 0, 0, 0, 0 };
+                        read_coefs = tempc2;
+                        break;
+                    case 0x61:
+                        double[] tempc3 = { 0.0008, 0.02 * Math.PI / 180F, 0.0001, 0.00004, 25, 0.00565, 0.0055, 0.000030518 };
+                        read_coefs = tempc3;
+                        additional_mult = -1;
+                        break;
+                }
+
+            double[] quats = new double[4];
+            DenseMatrix quat_m = new DenseMatrix(1, 4);
+            Matrix DCM = new DenseMatrix(3, 3);
+            Matrix sens = new DenseMatrix(1, 3);
+            Matrix res = new DenseMatrix(1, 3);
+            double tempr = new double();
+            double sqr = new double();
+            
             for (int i = 0; i < length; i++)
             {
                 progressBar.Value++;
+                // умножены на -1 для того чтобы оси соответствовали правой тройке
+                // и осям на датчиках
+                mw[0] = source[i].w[0] * read_coefs[1]*Wk;// *-1;
+                mw[1] = source[i].w[1] * read_coefs[1]*Wk;// * -1;
+                mw[2] = source[i].w[2] * read_coefs[1]*Wk;// * -1;
+                ma[0] = source[i].a[0] * read_coefs[0]*Ak;// * -1;
+                ma[1] = source[i].a[1] * read_coefs[0]*Ak;// * -1;
+                ma[2] = source[i].a[2] * read_coefs[0]*Ak;// * -1;
+                mm[0] = source[i].m[0] * read_coefs[2]*Mk;// * -1;
+                mm[1] = source[i].m[1] * read_coefs[2]*Mk;// * -1;
+                mm[2] = source[i].m[2] * read_coefs[2]*Mk;// * -1;
 
-                Sensors.a.At(0, 0, source[i].a[0] * read_coefs[0]);
-                Sensors.a.At(0, 1, source[i].a[1] * read_coefs[0]);
-                Sensors.a.At(0, 2, source[i].a[2] * read_coefs[0]);
+                
+                //mw = single_correction(gyro_c, w[i, 0], w[i, 1], w[i, 2]);
 
-                Sensors.w.At(0, 0, source[i].w[0] * read_coefs[1]);
-                Sensors.w.At(0, 1, source[i].w[1] * read_coefs[1]);
-                Sensors.w.At(0, 2, source[i].w[2] * read_coefs[1]);
+                Sensors.a.At(0, 0, ma[0]);
+                Sensors.a.At(0, 1, ma[1]);
+                Sensors.a.At(0, 2, ma[2]);
 
-                Sensors.m.At(0, 0, source[i].m[0] * read_coefs[2]);
-                Sensors.m.At(0, 1, source[i].m[1] * read_coefs[2]);
-                Sensors.m.At(0, 2, source[i].m[2] * read_coefs[2]);
+                Sensors.w.At(0, 0, mw[0]);
+                Sensors.w.At(0, 1, mw[1]);
+                Sensors.w.At(0, 2, mw[2]);
+
+                Sensors.m.At(0, 0, mm[0]);
+                Sensors.m.At(0, 1, mm[1]);
+                Sensors.m.At(0, 2, mm[2]);
 
                 AHRS_result = Kalman_class.AHRS_LKF_EULER(Sensors, State, Parameters);
 
                 State = AHRS_result.Item3;
+                mm = single_correction(magn_c, mm[0], mm[1], mm[2]);
+                ma = single_correction(accl_c, ma[0], ma[1], ma[2]);
                 //------------------------------------------------------------------------
                 //mm = single_correction(magn_c, m[i, 0], m[i, 1], m[i, 2]);
                 //ma = single_correction(accl_c, a[i, 0], a[i, 1], a[i, 2]);
                 //mw = single_correction(gyro_c, w[i, 0], w[i, 1], w[i, 2]);
                 //----------------------------------------------------------------------
-                mw[0] = source[i].w[0] * read_coefs[1];
-                mw[1] = source[i].w[1] * read_coefs[1];
-                mw[2] = source[i].w[2] * read_coefs[1];
-                ma[0] = source[i].a[0] * read_coefs[0];
-                ma[1] = source[i].a[1] * read_coefs[0];
-                ma[2] = source[i].a[2] * read_coefs[0];
-                mm[0] = source[i].m[0] * read_coefs[2];
-                mm[1] = source[i].m[1] * read_coefs[2];
-                mm[2] = source[i].m[2] * read_coefs[2];
-
-                //if ((i >= 100) && (index == 1))
-                //{
-                //    double qwa = Math.Sqrt(Math.Pow(ma[0], 2) + Math.Pow(ma[1], 2) + Math.Pow(ma[2], 2));
-                //    double qww = Math.Sqrt(Math.Pow(mw[0], 2) + Math.Pow(mw[1], 2) + Math.Pow(mw[2], 2));
-                //    double qwm = Math.Sqrt(Math.Pow(mm[0], 2) + Math.Pow(mm[1], 2) + Math.Pow(mm[2], 2));
-                //    double co = 1 / qwm;
-                //}
+                
                 //----------------------------------------------------------------------
                 angles[0] = (AHRS_result.Item1.At(0));
                 angles[1] = (AHRS_result.Item1.At(1));
                 angles[2] = (AHRS_result.Item1.At(2));
+                //angles[0] = (anglez[i]);
+                //angles[1] = (angley[i]);
+                //angles[2] = (anglex[i]);
+
+                //sqr = Math.Sqrt(mm[0]*mm[0] + mm[1]*mm[1] + mm[2]*mm[2]);
+                //mm[0] = mm[0] / sqr;
+                //mm[1] = mm[1] / sqr;
+                //mm[2] = mm[2] / sqr;
+                //sqr = sqr;
+
+                //if (source[i].quat[1] != 0)
+                //{
+                //    quats[0] = source[i].quat[0] * read_coefs[6];
+                //    quats[1] = source[i].quat[1] * read_coefs[7];
+                //    quats[2] = source[i].quat[2] * read_coefs[7];
+                //    quats[3] = source[i].quat[3] * read_coefs[7];
+                //    quat_m.At(0, 0, quats[0]);
+                //    quat_m.At(0, 1, quats[1]);
+                //    quat_m.At(0, 2, quats[2]);
+                //    quat_m.At(0, 3, quats[3]);
+                //    DCM = Kalman_class.quat_to_DCM(quat_m);
+                //    res = Kalman_class.dcm2angle(DCM);
+                //    //angles = quat2angle(quats);
+                //    //DCM = Kalman_class.Matrix_Transpose(quat2dcm(quats));
+                //    angles[0] = res.At(0, 0);
+                //    angles[1] = res.At(0, 1);
+                //    angles[2] = res.At(0, 2);
+                //    //DMC = Kalman_class.Matrix_Transpose(DMC);
+                //    /*sens.At(0, 0, ma[0]);
+                //    sens.At(0, 1, ma[1]);
+                //    sens.At(0, 2, ma[2]);
+                //    res = Kalman_class.Matrix_Mult(sens, DCM);
+                //    ma[0] = res.At(0, 0);
+                //    ma[1] = res.At(0, 1);
+                //    ma[2] = res.At(0, 2);
+
+                //    sens.At(0, 0, mw[0]);
+                //    sens.At(0, 1, mw[1]);
+                //    sens.At(0, 2, mw[2]);
+                //    res = Kalman_class.Matrix_Mult(sens, DCM);
+                //    mw[0] = res.At(0, 0);
+                //    mw[1] = res.At(0, 1);
+                //    mw[2] = res.At(0, 2);
+
+                //    sens.At(0, 0, mm[0]);
+                //    sens.At(0, 1, mm[1]);
+                //    sens.At(0, 2, mm[2]);
+                //    res = Kalman_class.Matrix_Mult(sens, DCM);
+                //    mm[0] = res.At(0, 0);
+                //    mm[1] = res.At(0, 1);
+                //    mm[2] = res.At(0, 2);*/
+                //}
+
+                tempr = read_coefs[4] + source[i].temper * read_coefs[5];
 
                 // IMU
+                // QQ
                 buf16 = (Int16)(angles[0] * 10000);
                 str_imu.Write(buf16);
                 buf16 = (Int16)(angles[1] * 10000);
@@ -464,6 +590,7 @@ namespace CCS_Reader
                 buf16 = (Int16)(angles[2] * 10000);
                 str_imu.Write(buf16);
 
+                // w
                 buf16 = (Int16)(mw[0] * 3000);
                 str_imu.Write(buf16);
                 buf16 = (Int16)(mw[1] * 3000);
@@ -471,13 +598,14 @@ namespace CCS_Reader
                 buf16 = (Int16)(mw[2] * 3000);
                 str_imu.Write(buf16);
 
+                // a
                 buf16 = (Int16)(ma[0] * 3000);
                 str_imu.Write(buf16);
                 buf16 = (Int16)(ma[1] * 3000);
                 str_imu.Write(buf16);
                 buf16 = (Int16)(ma[2] * 3000);
                 str_imu.Write(buf16);
-
+                // m
                 buf16 = (Int16)(mm[0] * 3000);
                 str_imu.Write(buf16);
                 buf16 = (Int16)(mm[1] * 3000);
@@ -485,14 +613,14 @@ namespace CCS_Reader
                 buf16 = (Int16)(mm[2] * 3000);
                 str_imu.Write(buf16);
 
-                buf16 = (Int16)(source[i].quat[0]);
+                buf16 = (Int16)(tempr); // t
                 str_imu.Write(buf16);
 
                 //buf32 = (Int32)(counter[i]);
-                buf32 = (Int32)(source[i].ticks);
+                buf32 = (Int32)(source[i].ticks); // pps_imu
                 str_imu.Write(buf32);
 
-                buf8 = (Byte)(0);
+                buf8 = (Byte)(0);   // check_sum
                 str_imu.Write(buf8);
             }
             
@@ -504,35 +632,45 @@ namespace CCS_Reader
         private void write_data_raw(int index)
         {
             byte[] full_file = new byte[byte2read[index].Count];
+            //byte[] full_file = File.ReadAllBytes("D:\\Projects\\КСК синхронизация\\3 этап\\rec2_3.log");
+            string[] name = saveFileDialog.FileName.Split('\\');
+            string path = "";
+            for (int i = 0; i < name.Length - 1; i++)
+                path += name[i] + "\\";
+            FileStream fs_log = File.Create(path + "raw_data\\" + name[name.Length - 1] + "_" + index + ".log", 2048, FileOptions.None);
+            BinaryWriter str_log = new BinaryWriter(fs_log);
             packet pack = new packet();
+            GPS_packet gps_pack = new GPS_packet();
+            byte[] pack2 = new byte[26];
+            byte[] buffer = new byte[2];
+            byte[] buffer2 = new byte[4];
             byte[] temp = new byte[2];
             int crc;
             progressBar.Value = 0;
             byte type_flag = 0;
-            switch (index)
-            {
-                case 0:
-                    type_flag = 65;
-                    break;
-                case 1:
-                    type_flag = 81;
-                    break;
-            }
+            bool first_init = true;
+            double[] read_coefs = new double[10];
             if (full_file.Length != 0)
             {
                 for (int i = 0; i < full_file.Length; i++)
                 {
                     full_file[i] = (byte)byte2read[index].Dequeue();
-                    
+
                 }
+                str_log.Write(full_file);
+                str_log.Flush();
+                str_log.Close();
                 progressBar.Maximum = full_file.Length - 39;
                 for (int i = 0; i < full_file.Length - 39; i++)
                 {
                     if (i % 50 == 0)
                         progressBar.Value += 49;
                     if ((full_file[i] == 0x10) && (full_file[i + 38] == 0x10) && (full_file[i + 39] == 0x03) &&
-                        (full_file[i + 1] == type_flag))
+                        ((full_file[i + 1] == 0x41) || (full_file[i + 1] == 0x51) || (full_file[i + 1] == 0x61)))
                     {
+
+                        type_flag = full_file[i + 1];
+                        
                         crc = 0;
                         for (int j = i + 1; j < i + 37; j++)
                         {
@@ -551,18 +689,18 @@ namespace CCS_Reader
                             pack.a[1] = BitConverter.ToInt16(full_file, i + 8);
                             pack.a[2] = BitConverter.ToInt16(full_file, i + 10);
                             pack.w = new short[3];
-                            //pack.w[0] = BitConverter.ToInt16(full_file, i + 12);
-                            //pack.w[1] = BitConverter.ToInt16(full_file, i + 14);
-                            //pack.w[2] = BitConverter.ToInt16(full_file, i + 16);
-                            temp[0] = full_file[i + 13];
-                            temp[1] = full_file[i + 12];
-                            pack.w[0] = BitConverter.ToInt16(temp, 0);
-                            temp[0] = full_file[i + 15];
-                            temp[1] = full_file[i + 14];
-                            pack.w[1] = BitConverter.ToInt16(temp,0);
-                            temp[0] = full_file[i + 17];
-                            temp[1] = full_file[i + 16];
-                            pack.w[2] = BitConverter.ToInt16(temp, 0);
+                            pack.w[0] = BitConverter.ToInt16(full_file, i + 12);
+                            pack.w[1] = BitConverter.ToInt16(full_file, i + 14);
+                            pack.w[2] = BitConverter.ToInt16(full_file, i + 16);
+                            //temp[0] = full_file[i + 13];
+                            //temp[1] = full_file[i + 12];
+                            //pack.w[0] = BitConverter.ToInt16(temp, 0);
+                            //temp[0] = full_file[i + 15];
+                            //temp[1] = full_file[i + 14];
+                            //pack.w[1] = BitConverter.ToInt16(temp,0);
+                            //temp[0] = full_file[i + 17];
+                            //temp[1] = full_file[i + 16];
+                            //pack.w[2] = BitConverter.ToInt16(temp, 0);
                             pack.m = new short[3];
                             pack.m[0] = BitConverter.ToInt16(full_file, i + 18);
                             pack.m[1] = BitConverter.ToInt16(full_file, i + 20);
@@ -580,14 +718,59 @@ namespace CCS_Reader
                             pack.frame3 = full_file[i + 39];
                             
 
-                            if (pack.snum == 241) // right
-                                read_queue[0].Enqueue(pack);
-                            else if (pack.snum == 225) // left
-                                read_queue[1].Enqueue(pack);
-                            else if (pack.snum == 1) // can
-                                read_queue[2].Enqueue(pack);
-                            else
-                                read_queue[3].Enqueue(pack);
+                            switch (type_flag)
+                            {
+                                case 0x41:
+                                    if (pack.snum == (0xF0 ^ 1))
+                                        read_queue[0].Enqueue(pack); // left oar
+                                    else if (pack.snum == (0xE0 ^ 1))
+                                        read_queue[1].Enqueue(pack); // right oar
+                                    break;
+                                case 0x51:
+                                    if (pack.snum == 1)
+                                        read_queue[4].Enqueue(pack); // seat
+                                    break;
+                                case 0x61:
+                                    if (pack.snum == (0xF0 ^ 1))
+                                        read_queue[2].Enqueue(pack); // first hand
+                                    else if (pack.snum == (0xE0 ^ 1))
+                                        read_queue[3].Enqueue(pack); // second hand
+                                    break;
+                                
+                            }
+                        }
+                    }
+                    if ((full_file[i + 29] == 3) && (full_file[i + 28] == 16) && (full_file[i] == 16) &&
+                    (full_file[i + 1] == 50))   // условие начала GPS пакета
+                    {
+                        crc = 50;
+                        for (int j = 0; j < 26; j++)
+                        {
+                            pack2[j] = full_file[i + j + 2];
+                            if (j < 25)
+                                crc = crc ^ pack2[j];
+                        }
+                        if (crc == pack2[pack2.Length - 1])
+                        {
+                            gps_pack = new GPS_packet();
+                            //ticks2[k2] = pack2[3] + pack2[2] * (int)Math.Pow(2, 8) +
+                            //    pack2[1] * (int)Math.Pow(2, 16) + pack2[0] * (int)Math.Pow(2, 24);
+                            gps_pack.ticks_gps = BitConverter.ToUInt32(pack2, 0);
+                            buffer2[0] = pack2[4]; buffer2[1] = pack2[5]; buffer2[2] = pack2[6]; buffer2[3] = pack2[7];
+                            gps_pack.lat = ((double)BitConverter.ToInt32(buffer2, 0)) / 600000;
+                            buffer2[0] = pack2[8]; buffer2[1] = pack2[9]; buffer2[2] = pack2[10]; buffer2[3] = pack2[11];
+                            gps_pack.lon = ((double)BitConverter.ToInt32(buffer2, 0)) / 600000;
+                            buffer[0] = pack2[12]; buffer[1] = pack2[13];
+                            gps_pack.speed = (double)BitConverter.ToInt16(buffer, 0) / 100;
+                            buffer[0] = pack2[14]; buffer[1] = pack2[15];
+                            gps_pack.course = (double)BitConverter.ToInt16(buffer, 0) / 160;
+                            buffer2[0] = pack2[16]; buffer2[1] = pack2[17]; buffer2[2] = pack2[18]; buffer2[3] = pack2[19];
+                            gps_pack.time = ((double)BitConverter.ToInt32(buffer2, 0)) / 10;
+                            gps_pack.stat = pack2[20];
+                            buffer2[0] = pack2[21]; buffer2[1] = pack2[22]; buffer2[2] = pack2[23]; buffer2[3] = pack2[24];
+                            gps_pack.date = ((double)BitConverter.ToInt32(buffer2, 0));
+                            GPS_queue.Enqueue(gps_pack);
+
                         }
                     }
 
@@ -601,6 +784,7 @@ namespace CCS_Reader
             saveFileDialog.Filter = "Все файлы (*.*)|*.*";
             saveFileDialog.Title = "Выберите папку и имя файлов для сохранения данных";
             saveFileDialog.AddExtension = false;
+
             DialogResult result = saveFileDialog.ShowDialog();
             if (result == DialogResult.OK)
             {
@@ -615,206 +799,53 @@ namespace CCS_Reader
             
         }
 
-        private double[] get_accl_coefs(int index)
+        private double[] quat2angle(double[] quat)
         {
-            double[] result = new double[0];
-            switch (index)
-            {
-                case 1:
-                    double[] temp1 = { -0.0081, 0.0401, -0.0089, 0.0301,
-                                        -0.0111, 0.0323, 0.0093, 0.0104, 0.0085, -0.0921, -0.1201, -0.1454 };
-                    result = temp1;
-                    break;
-                case 2:
-                    double[] temp2 = {0.043713810744819,   0.032204099593533,   0.014469608704782,   0.067770825077312,
-                       0.124497968267554,  -0.069373064241876,  -0.020960499722065,  -0.119156909250651,
-                       0.044421201741530,  -0.179463499557114,  -0.234503197266493,  -0.036294503190156 };
-                    result = temp2;
-                    break;
-                case 3:
-                    double[] temp3 = {0.024167075678158,   0.017921002182728,   0.027208980951327,   0.047646758555060,
-                      -0.052181643992751,  -0.056215499304436,  -0.011304687635132,   0.087617101877347,
-                       0.051573793476529,  -0.045096522590058,  -0.034826544109968,  -0.215775421842763 };
-                    result = temp3;
-                    break;
-                case 4:
-                    double[] temp4 = {0.114432559973540,   0.106838802436507,   0.051899182252855,   0.042431602755402,
-                      -0.208355094982050,  -0.058741377932612,  -0.017284017902782,   0.109414756776846,
-                       0.041872917797213,  -0.207903904900104,   0.069870156128220,  -0.420879615848955 };
-                    result = temp4;
-                    break;
-                case 5:
-                    double[] temp5 = {-0.089083516880583,  -0.212101554759966,  -0.074106774400082,   0.140475177135465,
-                       0.050748404792032,   0.035466506409495,   0.135105447115893,   0.005040120014690,
-                       0.034685336520958,  -0.105165286994008,  -0.049062087663207,   0.090272091944523 };
-                    result = temp5;
-                    break;
-                case 6:
-                    double[] temp6 = {-0.067103542084971,   0.079590227298170,   0.070742925683350,  -0.041636392993342,
-                       0.220644176913664,  -0.170330066249381,   0.073407186641070,  -0.024528044153757,
-                      -0.047531378473926,   0.078357526154640,  -0.155837767265987,  -0.238145173236917 };
-                    result = temp6;
-                    break;
-                case 7:
-                    double[] temp7 = {0.045134621164588,   0.068462421832649,   0.017700087773030,  -0.225994306022918,
-                       0.088191771774388,  -0.179589945451456,   0.025986312625294,  -0.040027912330171,
-                      -0.046415300400838,  -0.158947267757270,  -0.067242068899347,  -0.124325353336784 };
-                    result = temp7;
-                    break;
-                case 8:
-                    double[] temp8 = {0.104118389703866,   0.084958239636849,   0.032826888550085,  -0.140404308281075,
-                      -0.017921707825125,   0.061748807252006,  -0.006715952930192,   0.012639691500341,
-                       0.046309410792156,  -0.218542898428085,  -0.003731519086623,  -0.319272823668150 };
-                    result = temp8;
-                    break;
-                case 9:
-                    double[] temp9 = {0.083867364580635,   0.080541880516270,   0.112368594320036,   0.122244712046047,
-                      -0.047981420650493,  -0.184024814423127,  -0.097675623527326,  -0.054026830167556,
-                       0.174687241854919,  -0.252086667315104,   0.043187133234385,  -0.178080825685559 };
-                    result = temp9;
-                    break;
-                case 10:
-                    double[] temp10 = {-0.076212684578814,   0.036874608262696,  -0.006395329952186,  -0.048533020632689,
-                       0.031596659443431,   0.080190089955160,   0.065893547405957,  -0.066878035481739,
-                      -0.029911464522049,  -0.031068180680396,  -0.065093789262652,  -0.172359413648919 };
-                    result = temp10;
-                    break;
-                case 11:
-                    double[] temp11 = {0.019329839277928,   0.049200059518738,   0.044353143292047,   0.058542188048022,
-                        0.062731113213260,  -0.028231153395039,  -0.121639863668443,  -0.066633118358829,
-                        0.133914377849888,  -0.142745425008951,  -0.028743819809420,  -0.321475954225317 };
-                    result = temp11;
-                    break;
-                case 12:
-                    double[] temp12 = {-0.036279717606262,   0.053297786065231,   0.004975622946153,   0.006037301787334,
-                       0.076916729330439,  -0.039059863553166,   0.022282449734369,  -0.072682985769156,
-                       0.021034870244154,  -0.031357531783622,   0.048738371353602,  -0.305991758949551 };
-                    result = temp12;
-                    break;
-                case 13:
-                    double[] temp13 = {0.022459687724866,  -0.062077105256798,   0.046795345083684,  -0.281967510046409,
-                      -0.111189762502934,   0.153912645890540,   0.113497567735599,  -0.236258801745200,
-                       0.107476182651660,  -0.460519774903838,   0.115898799892106,  -0.013940296751586 };
-                    result = temp13;
-                    break;
-                case 14:
-                    double[] temp14 = {0.030554866588497,   0.041807742536512,   0.014637539550826,   0.070444712524782,
-                      -0.045520819149987,  -0.053792609796159,   0.067583771817011,   0.044201999575329,
-                      -0.068058903538097,  -0.133268083186438,  -0.157601990534356,  -0.125072062660633 };
-                    result = temp14;
-                    break;
-                case 15:
-                    double[] temp15 = {-0.091419543228102,   0.013318237063326,   0.015108665155053,  -0.045927518891181,
-                       0.138517055483565,   0.115478666476207,   0.028512863952903,   0.154290791103919,
-                      -0.019524419888084,  -0.171930546561895,  -0.301610286853745,   0.050182040765164 };
-                    result = temp15;
-                    break;
-                default:
-                    result = new double[12];
-                    break;
-            }
-
+            double[] result = new double[3];
+            //result[0] = Math.Atan2(2 * quat[2] * quat[0] - 2 * quat[1] * quat[3], 1 - 2 * Math.Pow(quat[2], 2) - 2 * Math.Pow(quat[3], 2));
+            //result[1] = Math.Atan2(2 * quat[1] * quat[0] - 2 * quat[2] * quat[3], 1 - 2 * Math.Pow(quat[1], 2) - 2 * Math.Pow(quat[3], 2));
+            //result[2] = Math.Asin(2 * quat[1] * quat[2] + 2 * quat[0] * quat[3]);
+            // w x y z
+            result[0] = Math.Atan2(2 * quat[0] * quat[1] + 2 * quat[2] * quat[3], 1 - 2 * Math.Pow(quat[1], 2) - 2 * Math.Pow(quat[2], 2));
+            result[2] = Math.Atan2(2 * quat[0] * quat[3] + 2 * quat[1] * quat[2], 1 - 2 * Math.Pow(quat[2], 2) - 2 * Math.Pow(quat[3], 2));
+            result[1] = Math.Asin(2 * quat[0] * quat[2] - 2 * quat[1] * quat[3]);
             return result;
         }
 
-        private double[] get_magn_coefs(int index)
+        private Matrix quat2dcm(double[] quat)
         {
-            double[] result = new double[0];
-            switch (index)
-            {
-                case 1:
-                    double[] temp1 = {-1.3000, -1.3499, -1.2180, -0.5191, 1.2598, 0.8968,
-                                         1.1259, -0.8541, -1.4552, -0.1676, 0.0201, 0.1032 };
-                    result = temp1;
-                    break;
-                case 2:
-                    double[] temp2 = {-1.021584893111037,  -1.156822840186938,  -1.059527431706735,   0.405595881908856,
-                       0.954589891425432,  -0.069541017965736,   0.991639731762399,  -1.012866646546024,
-                      -0.886632983175849,  -0.065839849453693,   0.059178141113860,   0.229560149816208 };
-                    result = temp2;
-                    break;
-                case 3:
-                    double[] temp3 = {0.238481805936342,  -0.611518102386768,  -0.521946604623734,  -0.152499267950600,
-                       0.380041463141051,  -0.089921812966795,  -0.029707070918285,   0.777735008725552,
-                      -0.263038218323014,   1.102625052444242,  -0.174805428028501,   0.764500679478734 };
-                    result = temp3;
-                    break;
-                case 4:
-                    double[] temp4 = {-0.912310601920176,  -0.035122859804258,  -0.980824053980284,  -0.900924288276854,
-                      -0.392141063030012,  -0.212147078216013,   0.370184540925128,  -0.138611784797257,
-                       0.592181216595855,  -0.716249303213732,   0.743440070172089,   0.417833919696198 };
-                    result = temp4;
-                    break;
-                case 5:
-                    double[] temp5 = {-0.810295610308645,  -0.669847770840476,   0.029900885597606,  -0.314087876668212,
-                        -0.489991754352551,  -0.196143690771996,   0.785352181879690,  -0.148859193029027,
-                        0.475841206204676,  -0.674462559992835,   0.797605908162643,   1.039652155282594 };
-                    result = temp5;
-                    break;
-                case 6:
-                    double[] temp6 = {-0.170985488990754,  -0.564445824510332,  -0.156834833150726,  -0.308524525175852,
-                       0.442976518336103,  -0.358382840398978,  -0.080578225278669,   0.617372103949350,
-                      -0.541560455196209,   0.718141250811105,  -0.546677511918727,   1.013917065538093 };
-                    result = temp6;
-                    break;
-                case 7:
-                    double[] temp7 = {0.240929547813333,  -0.055331307635026,   0.080962491207260,   0.111673173134500,
-                      -0.437371531722260,   0.086278316536676,  -0.156009284276460,  -0.450383773465459,
-                      -0.232586543173110,   1.800622790457513,   0.479391322929313,  -1.645807763696289 };
-                    result = temp7;
-                    break;
-                case 8:
-                    double[] temp8 = {-0.657211729785750,  -0.751518105983042,  -0.502998987070861,   0.346979570434948,
-                      -0.626698848495405,   0.854645387115907,  -0.722084569035857,  -0.328055065021069,
-                      -0.229782299399703,  -0.357543764086528,  -0.658127285343566,   0.346576778962207 };
-                    result = temp8;
-                    break;
-                case 9:
-                    double[] temp9 = {-0.626836215836308,  -0.013759850146307,  -0.583068885503070,   0.859006753692338,
-                      -0.291104097898408,   0.359496708414707,  -0.377515731153946,  -0.003959749268316,
-                      -0.269023628503547,  -0.839470996073222,  -0.734894289704346,   0.173586855759935 };
-                    result = temp9;
-                    break;
-                case 10:
-                    double[] temp10 = {-0.369311287771329,  -0.619181805694075,   0.215860213252399,  -0.202174116935395,
-                      -0.469592802232751,  -0.047691482924571,   0.275440905803689,  -0.360029056603724,
-                       0.184994296407090,  -0.770865355323793,   0.374651486398312,   1.142034879854652 };
-                    result = temp10;
-                    break;
-                case 11:
-                    double[] temp11 = {0.608714881216204,   0.726988256983956,   0.548780040935389,   0.016242466383838,
-                       0.008309177330682,  -0.358605622379460,  -0.406898271841329,  -0.176070107760827,
-                       0.023260260319988,  -0.615605787372553,                   0,  -0.736861602878822 };
-                    result = temp11;
-                    break;
-                case 12:
-                    double[] temp12 = {0.174793461009216,  -0.040792970147182,   0.416590023305863,   0.023815283418015,
-                      -0.400898824923381,  -0.056977093394991,  -0.137939234650323,  -0.275073547098045,
-                      -0.226813306028076,   1.386816689877866,   0.503695987968843,  -1.311523063280292 };
-                    result = temp12;
-                    break;
-                case 13:
-                    double[] temp13 = {-0.363402668053064,  -1.094360523138415,  -0.337177750046436,  -0.150554901049520,
-                       0.760814281494252,  -0.527695809751047,  -0.366683816407952,   0.694017973652759,
-                      -0.257690691379724,   0.940590498718544,  -0.603082996186667,   0.915339225862064 };
-                    result = temp13;
-                    break;
-                case 14:
-                    double[] temp14 = {0.239432068058017,  -0.725844731558349,  -1.151204001242439,   0.549384999741005,
-                       0.017479681993509,   0.446775656927678,  -0.105826078256205,  -0.233477063739925,
-                      -0.014288927249738,   1.072218089476175,   0.355024708548398,  -0.194902780695747 };
-                    result = temp14;
-                    break;
-                case 15:
-                    double[] temp15 = {0.106974544824006,  -0.921067620149456,  -0.544783980541099,  -0.113463751891383,
-                       0.575096563967160,  -0.215872226257520,  -0.106232440232434,   0.665018879611869,
-                      -0.120415653314238,   0.975928019145445,  -0.232693130860269,   0.505738827768481 };
-                    result = temp15;
-                    break;
-                default:
-                    result = new double[12];
-                    break;
-            }
+            Matrix result = new DenseMatrix(3, 3, 0);
+            result.At(0, 0, (1 - 2 * (quat[2] * quat[2] + quat[3] * quat[3])));
+            result.At(0, 1, 2 * (quat[1] * quat[2] - quat[3] * quat[0]));
+            result.At(0, 2, 2 * (quat[1] * quat[3] + quat[2] * quat[0]));
+            result.At(1, 0, 2 * (quat[1] * quat[2] + quat[3] * quat[0]));
+            result.At(1, 1, 1 - 2 * (quat[1] * quat[1] + quat[3] * quat[3]));
+            result.At(1, 2, 2 * (quat[2] * quat[3] - quat[1] * quat[0]));
+            result.At(2, 0, 2 * (quat[1] * quat[3] - quat[2] * quat[0]));
+            result.At(2, 1, 2 * (quat[2] * quat[3] + quat[1] * quat[0]));
+            result.At(2, 2, 1 - 2 * (quat[1] * quat[1] + quat[2] * quat[2]));
+            return result;
+        }
+
+        private Matrix angle2dcm(double[] angles)
+        {
+            // z y x
+            Matrix result = new DenseMatrix(3, 3, 0);
+            double Cos1 = Math.Cos(angles[0]);
+            double Cos2 = Math.Cos(angles[1]);
+            double Cos3 = Math.Cos(angles[2]);
+            double Sin1 = Math.Sin(angles[0]);
+            double Sin2 = Math.Sin(angles[1]);
+            double Sin3 = Math.Sin(angles[2]);
+            result.At(0, 0, Cos2 * Cos1);
+            result.At(0, 1, Cos2 * Sin1);
+            result.At(0, 2, -Sin2);
+            result.At(1, 0, Sin3 * Sin2 * Cos1 - Cos3 * Sin1);
+            result.At(1, 1, Sin3 * Sin2 * Sin1 + Cos3 * Cos1);
+            result.At(1, 2, Sin3 * Cos2);
+            result.At(2, 0, Cos3 * Sin2 * Cos1 + Sin3 * Sin1);
+            result.At(2, 1, Cos3 * Sin2 * Sin1 - Sin3 * Cos1);
+            result.At(2, 2, Cos3 * Cos2);
             return result;
         }
 
@@ -848,12 +879,11 @@ namespace CCS_Reader
             result[2] = res.At(2, 0);
             return result;
         }
-
-
     }
 
     public struct packet
     {
+        // IMU part
         public byte frame1;
         public byte type;
         public uint ticks;
@@ -867,6 +897,19 @@ namespace CCS_Reader
         public byte crc;
         public byte frame2;
         public byte frame3;
+    }
+
+    public struct GPS_packet
+    {
+        // GPS part
+        public uint ticks_gps;
+        public double lat;
+        public double lon;
+        public double speed;
+        public double course;
+        public double time;
+        public double date;
+        public byte stat;
     }
 }
 
